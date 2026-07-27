@@ -121,6 +121,22 @@
     .lvl-orc   { background: #e0f2f1; border-color: #26a69a; }
     .lvl-gar   { background: #e1d5e7; border-color: #9673a6; }
 
+    /* Group header boxes */
+    .lvl-group {
+      background: #4a7ab5;
+      border-color: #2d5a8e;
+      border-width: 2px;
+      padding: 2px 5px;
+    }
+    .lvl-group .name {
+      color: #fff;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      line-height: 1.1;
+    }
+
     /* Store header boxes */
     .lvl-store {
       background: #254d75;
@@ -169,7 +185,6 @@
 <body>
 
 <div class="toolbar">
-  <span>&#128202; Organograma de Funcionários</span>
   <div id="summary-bar" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;"></div>
   <div style="margin-left: auto; display: flex; gap: 8px;">
     <button class="toolbar-btn" onclick="zoom(1.15)">＋ Zoom</button>
@@ -188,10 +203,15 @@
 // ─── Constants ───────────────────────────────────────────────────
 const BW      = 174;   // box width
 const BH      = 54;    // box height
+const BH_GROUP = 30;   // altura menor para caixas de grupo
 const GAP_X   = 50;    // gap entre irmãos (horizontal)
 const GAP_Y   = 52;    // gap between parent and first child row
 const ROW_GAP = 44;    // gap between wrapped rows of children
 const PAD     = 40;
+
+function getNodeHeight(n) {
+  return n.cls === 'lvl-group' ? BH_GROUP : BH;
+}
 
 let scale = 1;
 const canvasEl = document.getElementById('canvas');
@@ -497,14 +517,15 @@ function subtreeWidth(n) {
 }
 
 function subtreeHeight(n) {
-  if (!n.children.length) return BH;
+  const h = getNodeHeight(n);
+  if (!n.children.length) return h;
   const rows = getRows(n);
   let childH = 0;
   rows.forEach((row, ri) => {
     const rh = Math.max(...row.map(c => subtreeHeight(c)));
     childH += rh + (ri < rows.length - 1 ? ROW_GAP : 0);
   });
-  return BH + GAP_Y + childH;
+  return h + GAP_Y + childH;
 }
 
 // ─── Layout ───────────────────────────────────────────────────────
@@ -516,7 +537,8 @@ function layout(n, x, y) {
   if (!n.children.length) return;
 
   const rows = getRows(n);
-  let rowY = y + BH + GAP_Y;
+  const h = getNodeHeight(n);
+  let rowY = y + h + GAP_Y;
 
   rows.forEach(row => {
     const gap = getGap(n);
@@ -552,7 +574,8 @@ collect(root);
 const svgNS = 'http://www.w3.org/2000/svg';
 
 allLines.forEach(([p, c]) => {
-  const px  = p.cx,     py  = p.cy + BH;
+  const ph  = getNodeHeight(p);
+  const px  = p.cx,     py  = p.cy + ph;
   const cx  = c.cx,     cy  = c.cy;
   const mid = py + (cy - py) / 2;
 
@@ -570,12 +593,14 @@ allLines.forEach(([p, c]) => {
 
 // ─── Render boxes ─────────────────────────────────────────────────
 allBoxes.forEach(n => {
+  const h = getNodeHeight(n);
   const div = document.createElement('div');
   div.className = 'box ' + n.cls;
   div.style.left      = (n.cx - BW / 2) + 'px';
   div.style.top       = n.cy + 'px';
   div.style.width     = BW + 'px';
-  div.style.minHeight = BH + 'px';
+  div.style.height    = h + 'px';
+  div.style.minHeight = h + 'px';
 
   const nameEl = document.createElement('div');
   nameEl.className = 'name';
@@ -606,7 +631,7 @@ allBoxes.forEach(n => {
 
 // ─── Size the canvas ──────────────────────────────────────────────
 const maxX = Math.max(...allBoxes.map(n => n.cx + BW / 2)) + PAD;
-const maxY = Math.max(...allBoxes.map(n => n.cy + BH))     + PAD + 80;
+const maxY = Math.max(...allBoxes.map(n => n.cy + getNodeHeight(n))) + PAD + 80;
 canvasEl.style.width  = maxX + 'px';
 canvasEl.style.height = maxY + 'px';
 svgEl.setAttribute('width',  maxX);
