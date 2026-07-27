@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Organograma - Funcionários</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #f0f4f8;
+      overflow: auto;
+      cursor: grab;
+      user-select: none;
+    }
+    body.grabbing, body.grabbing * {
+      cursor: grabbing !important;
+    }
+
+    .toolbar {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: 44px;
+      background: #1e4d78;
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      gap: 12px;
+      z-index: 100;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+      cursor: default;
+    }
+    .toolbar span {
+      color: #fff;
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+    }
+    .toolbar-btn {
+      background: rgba(255,255,255,0.15);
+      border: none;
+      color: #fff;
+      padding: 5px 12px;
+      border-radius: 4px;
+      font-size: 13px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .toolbar-btn:hover { background: rgba(255,255,255,0.3); }
+
+    #canvas-wrap {
+      margin-top: 44px;
+      width: 100%;
+      min-height: calc(100vh - 44px);
+      overflow: auto;
+    }
+    #canvas {
+      position: relative;
+      transform-origin: top left;
+    }
+
+    svg#lines {
+      position: absolute;
+      top: 0; left: 0;
+      pointer-events: none;
+    }
+
+    .box {
+      position: absolute;
+      border-radius: 6px;
+      border: 1.5px solid #6c8ebf;
+      text-align: center;
+      cursor: grab;
+      user-select: none;
+      transition: box-shadow 0.15s;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 5px 7px;
+    }
+    .box:hover { box-shadow: 0 4px 14px rgba(0,0,0,0.25); }
+
+    .box .name {
+      font-weight: 700;
+      font-size: 11.5px;
+      line-height: 1.3;
+      color: #1a1a1a;
+      white-space: pre-line;
+    }
+    .box .role {
+      font-size: 9.5px;
+      color: #444;
+      margin-top: 2px;
+      line-height: 1.2;
+      white-space: pre-line;
+    }
+    .box .obs {
+      font-size: 9px;
+      color: #c0392b;
+      margin-top: 2px;
+      font-style: italic;
+      white-space: pre-line;
+    }
+
+    /* Colors */
+    .lvl-0  { background: #1e4d78; border-color: #163a5f; }
+    .lvl-0 .name { color: #fff; font-size: 14px; }
+    .lvl-0 .role { color: #aecde8; font-size: 11px; }
+
+    .lvl-1  { background: #dae8fc; border-color: #6c8ebf; }
+    .lvl-1 .name { font-size: 12px; }
+
+    .lvl-2  { background: #d5e8d4; border-color: #82b366; }
+    .lvl-vend { background: #e1d5e7; border-color: #9673a6; }
+    .lvl-tech { background: #fff2cc; border-color: #d6b656; }
+    .lvl-mec  { background: #f8cecc; border-color: #b85450; }
+    .lvl-aux  { background: #e6f3ff; border-color: #6c8ebf; }
+    .lvl-extra { background: #ffe6cc; border-color: #d79b00; }
+    .lvl-orc   { background: #e0f2f1; border-color: #26a69a; }
+    .lvl-gar   { background: #e1d5e7; border-color: #9673a6; }
+
+    /* Group header boxes */
+    .lvl-group {
+      background: #4a7ab5;
+      border-color: #2d5a8e;
+      border-width: 2px;
+    }
+    .lvl-group .name {
+      color: #fff;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+
+  </style>
+</head>
+<body>
+
+<div class="toolbar">
+  <span>&#128202; Organograma de Funcionários</span>
+  <button class="toolbar-btn" onclick="zoom(1.15)">＋ Zoom</button>
+  <button class="toolbar-btn" onclick="zoom(0.87)">－ Zoom</button>
+  <button class="toolbar-btn" onclick="resetZoom()">&#8634; Reset</button>
+</div>
+
+<div id="canvas-wrap">
+  <div id="canvas">
+    <svg id="lines"></svg>
+  </div>
+</div>
+
+<script>
+// ─── Constants ───────────────────────────────────────────────────
+const BW      = 174;   // box width
+const BH      = 54;    // box height
+const GAP_X   = 50;    // gap entre irmãos (horizontal)
+const GAP_Y   = 52;    // gap between parent and first child row
+const ROW_GAP = 44;    // gap between wrapped rows of children
+const PAD     = 40;
+
+let scale = 1;
+const canvasEl = document.getElementById('canvas');
+const svgEl    = document.getElementById('lines');
+
+function zoom(f) {
+  scale = Math.min(3, Math.max(0.15, scale * f));
+  canvasEl.style.transform = 'scale(' + scale + ')';
+}
+function resetZoom() { scale = 1; canvasEl.style.transform = 'scale(1)'; }
+
+// ─── Drag to Pan (Navegação em qualquer posição) ─────────────────
+const canvasWrap = document.getElementById('canvas-wrap');
+let isMouseDown = false;
+let startX = 0, startY = 0;
+
+window.addEventListener('mousedown', (e) => {
+  if (e.target.closest('.toolbar')) return;
+  isMouseDown = true;
+  document.body.classList.add('grabbing');
+  startX = e.clientX;
+  startY = e.clientY;
+});
+
+window.addEventListener('mouseup', () => {
+  isMouseDown = false;
+  document.body.classList.remove('grabbing');
+});
+
+window.addEventListener('mousemove', (e) => {
+  if (!isMouseDown) return;
+  e.preventDefault();
+  const dx = e.clientX - startX;
+  const dy = e.clientY - startY;
+  startX = e.clientX;
+  startY = e.clientY;
+
+  canvasWrap.scrollLeft -= dx;
+  canvasWrap.scrollTop  -= dy;
+  window.scrollBy(-dx, -dy);
+});
+
+// ─── Node helper ─────────────────────────────────────────────────
+// maxCols: how many children per row before wrapping (default = all in one row)
+function node(id, name, role, cls, obs, maxCols) {
+  return { id, name: name || '', role: role || '',
+           cls: cls || 'lvl-3', obs: obs || '',
+           maxCols: maxCols || 9999, children: [] };
+}
+
+// ─── Tree ────────────────────────────────────────────────────────
+const root = node('alberto', 'ALBERTO', 'Gerente Geral', 'lvl-0');
+
+// ── Marlon branch — 3 grupos lado a lado ──
+const marlon = node('marlon', 'MARLON', 'Supervisor de Peças', 'lvl-1', '', 3);
+
+const grpAdmin = node('grp_admin', 'Administrativo', '', 'lvl-group', '', 1);
+grpAdmin.children = [
+  node('augusto',  'AUGUSTO CESAR\nBUENO TRINDADE', 'Assistente Administrativo', 'lvl-2'),
+  node('jefferson','JEFFERSON JOSE THEIS',            'Auxiliar Administrativo',   'lvl-2'),
+];
+
+const grpVendas = node('grp_vendas', 'Vendedores', '', 'lvl-group', '', 1);
+grpVendas.children = [
+  node('diego',  'DIEGO ALBERTO\nDE LIMA',     'Vendedor de Peças', 'lvl-2'),
+  node('dilson', 'DILSON WESTPHALEN\nPACHECO', 'Vendedor de Peças', 'lvl-2'),
+];
+
+const grpEstoque = node('grp_estoque', 'Estoque', '', 'lvl-group', '', 1);
+grpEstoque.children = [
+  node('samuel_e', 'SAMUEL DE AQUINO\nDE CASTRO', 'Estoquista Líder',        'lvl-2'),
+  node('allan',    'ALLAN LUÃ VIEIRA\nRAMOS',     'Boqueta',                 'lvl-2'),
+  node('davi',     'DAVI PINTO\nFOCCHESATTO',     'Auxiliar de Estoque - A', 'lvl-2'),
+];
+
+marlon.children = [grpAdmin, grpVendas, grpEstoque];
+
+// ── Vinicius branch — 8 grupos lado a lado ──
+const vinicius = node('vinicius', 'VINICIUS POPIOLEK', 'Supervisor de Serviços', 'lvl-1', '', 8);
+
+// Grupo Consultores → Eduardo (Líder) → 5 consultores
+const grpConsultores = node('grp_consultores', 'Consultores', '', 'lvl-group', '', 1);
+
+const eduardo = node('eduardo', 'EDUARDO RAMIRO\nCORDEIRO PINHEIRO', 'Consultor Técnico Líder', 'lvl-tech', '', 1);
+eduardo.children = [
+  node('alan_m',  'ALAN MULLER BORGES',               'Consultor Técnico', 'lvl-tech'),
+  node('bruna',   'BRUNA RENNER\nRIBEIRO',            'Consultor Técnico', 'lvl-tech'),
+  node('marcia',  'MARCIA REGINA\nGONCALVES',         'Consultor Técnico', 'lvl-tech'),
+  node('eduarda', 'EDUARDA ERTHER\nBATISTA',          'Consultor Técnico', 'lvl-tech'),
+  node('icaro',   'ICARO SANTOS\nDE BRITO',           'Consultor Técnico',       'lvl-tech'),
+  node('rodrigo_semi', 'RODRIGO MATOS',               'Consultor de Seminovos',  'lvl-tech'),
+];
+grpConsultores.children = [eduardo];
+
+// Grupo Orçamentista — mesmo nível de Consultores e Mecânicos
+const grpOrcamentista = node('grp_orc', 'Orçamentista', '', 'lvl-group', '', 1);
+const gilson = node('gilson', 'GILSON CESAR DA\nSILVA TRINDADE', 'Orçamentista', 'lvl-orc');
+grpOrcamentista.children = [gilson];
+
+// Caixa-grupo Mecânicos ACIMA do Rogério (igual ao Consultores acima do Eduardo)
+const grpMecanicos = node('grp_mec', 'Mecânicos', '', 'lvl-group', '', 1);
+
+// Rogério — Chefe de Oficina (filho do grupo Mecânicos)
+const rogerio = node('rogerio', 'ROGERIO ARNO\nLONGO GONÇALVES', 'Chefe de Oficina', 'lvl-mec', '', 1);
+rogerio.children = [
+  node('demetrius','DEMETRIUS\nLIGABUE GASS',          'Mecânico Referência', 'lvl-mec'),
+  node('jose_w',   'JOSE WAGNER\nALMEIDA STOLZENBERG', 'Mecânico A',          'lvl-mec'),
+  node('claiton',  'CLAITON CESAR\nNEVES MACHADO',     'Mecânico A',          'lvl-mec'),
+  node('vagner',   'VAGNER MAIA\nDE OLIVEIRA',          'Mecânico A',          'lvl-mec'),
+  node('diogenes', 'DIOGENES MARCONI\nDIAS GONÇALVES', 'Mecânico B',          'lvl-mec'),
+  node('jeferson', 'JEFERSON SIMOES\nDA SILVA',         'Mecânico B',          'lvl-mec'),
+  node('miguel',   'MIGUEL DA SILVEIRA\nFAGUNDES',      'Mecânico B',          'lvl-mec',
+                   'Licença de saúde\nRetorna em Outubro'),
+  node('lucas_s',  'LUCAS SILVA\nDE OLIVEIRA',          'Mecânico C',          'lvl-mec'),
+  node('thomas',   'THOMAS PINTO\nDA SILVA',            'Mecânico C',          'lvl-mec'),
+  node('samuel_m', 'SAMUEL DA SILVA\nSANTOS',           'Auxiliar Mecânico',   'lvl-mec'),
+  node('gustavo',  'GUSTAVO CARVALHO\nPERINGER',        'Auxiliar Mecânico',   'lvl-mec'),
+];
+grpMecanicos.children = [rogerio];
+
+// Grupo Eletricistas — apenas Vilmar (maxCols=1)
+const grpEletricistas = node('grp_elet', 'Eletricistas', '', 'lvl-group', '', 1);
+
+const vilmar  = node('vilmar',  'VILMAR JORGE\nPERDOMO',      'Técnico Mecânico Montador',           'lvl-extra', '', 1);
+const matheus = node('matheus', 'MATHEUS DOS SANTOS\nVIEGAS', 'Aux. Mecânico\nMontador/Eletricista', 'lvl-extra');
+vilmar.children = [matheus];
+grpEletricistas.children = [vilmar];
+
+// Grupo Pintor — irmão do Eletricistas (mesmo nível, direto no Vinicius)
+const grpPintor = node('grp_pintor', 'Pintor', '', 'lvl-group', '', 1);
+const gelso     = node('gelso', 'GELSO DOS SANTOS\nBATISTA', 'Pintor', 'lvl-extra');
+grpPintor.children = [gelso];
+
+// ── Setores Acessórios e Atendimento/NPS — direto sob Alberto (lado direito) ──
+const grpAcessorios = node('grp_acessorios', 'Acessórios', '', 'lvl-group', '', 1);
+grpAcessorios.children = [
+  node('lucas_d', 'LUCAS DORNELES\nSILVEIRA', 'Instalador Líder', 'lvl-2'),
+  node('lucas_f', 'LUCAS FERREIRA\nNUNES',    'Aux. de Instalação\nde Acessórios', 'lvl-2'),
+  node('renata',  'RENATA DOS\nSANTOS',       'Vendedor de Acessórios', 'lvl-2'),
+];
+
+const grpAtendimento = node('grp_atendimento', 'Atendimento / NPS', '', 'lvl-group', '', 1);
+
+const cristiane = node('cristiane', 'CRISTIANE AGUIAR\nMONTEIRO', 'Coordenador de Atendimento (NPS)', 'lvl-tech', '', 1);
+cristiane.children = [
+  node('isabel',  'MARIA ISABEL\nFRAGA LOPES',  'Agendamento Ativo',                  'lvl-tech'),
+  node('lucia',   'MARIA LUCIA\nBRITO',         'Confirmação de\nAgendamento e EPIS', 'lvl-tech'),
+  node('vanessa', 'VANESSA FERNANDES\nMENDONÇA', 'Apoio, Qualidade\ne Agendamento',    'lvl-tech'),
+  node('lucas_b', 'LUCAS BALDINO\nBALSEMÃO',    'Agendamento Passivo\ne Atend. Whats', 'lvl-tech'),
+];
+grpAtendimento.children = [cristiane];
+
+// ── Setor Garantia — direto sob Alberto (lado direito, após Atendimento/NPS) ──
+const grpGarantia = node('grp_garantia', 'Garantia', '', 'lvl-group', '', 1);
+grpGarantia.children = [
+  node('thyago',  'THYAGO NUNES DA\nCOSTA OLIVEIRA', 'Garantista',             'lvl-gar'),
+  node('lucas_c', 'LUCAS CORREA\nARETZ',            'Assistente de Garantia', 'lvl-gar'),
+];
+
+vinicius.children = [grpConsultores, grpOrcamentista, grpMecanicos, grpEletricistas, grpPintor];
+
+// ── Loja Matriz (Ramo Principal 1) ──
+const storeMatriz = node('store_matriz', '🏢 MATRIZ', 'Unidade Central', 'lvl-1', '', 5);
+storeMatriz.children = [marlon, vinicius, grpAcessorios, grpAtendimento, grpGarantia];
+
+// ── Loja Zona Sul (Ramo Principal 2) ──
+const storeZonaSul = node('store_zonasul', '🏢 ZONA SUL', 'Filial Zona Sul', 'lvl-1', '', 3);
+
+// Consultores Zona Sul
+const grpZsConsultores = node('grp_zs_cons', 'Consultores', '', 'lvl-group', '', 1);
+grpZsConsultores.children = [
+  node('jean',   'JEAN DOUGLAS DOS\nSANTOS ESTULANO', 'Consultor Técnico', 'lvl-tech'),
+  node('maicon', 'MAICON TUCHTENHAGEN\nFERREIRA',    'Consultor Técnico', 'lvl-tech'),
+];
+
+// Mecânicos Zona Sul
+const grpZsMecanicos = node('grp_zs_mec', 'Mecânicos', '', 'lvl-group', '', 1);
+grpZsMecanicos.children = [
+  node('chrystian', 'CHRYSTIAN PEIXOTO\nWESCHENFELDER',  'Mecânico A',        'lvl-mec'),
+  node('luiz_c',    'LUIZ CARLOS NUNES\nCARDOSO JUNIOR', 'Mecânico A',        'lvl-mec'),
+  node('pedro_s',   'PEDRO DE SOUZA\nDA SILVA',          'Auxiliar Mecânico', 'lvl-mec'),
+];
+
+// Pós-Vendas Zona Sul
+const grpZsPosVendas = node('grp_zs_pos', 'Pós-Vendas', '', 'lvl-group', '', 1);
+grpZsPosVendas.children = [
+  node('welerson', 'WELERSON LUCAS\nMENDES DOS SANTOS', 'Auxiliar de Pós-Vendas', 'lvl-2'),
+];
+
+storeZonaSul.children = [grpZsConsultores, grpZsMecanicos, grpZsPosVendas];
+
+// ── Loja Gravataí (Ramo Principal 3) ──
+const storeGravatai = node('store_gravatai', '🏢 GRAVATAÍ', 'Filial Gravataí', 'lvl-1', '', 2);
+
+// Consultores Gravataí
+const grpGrvConsultores = node('grp_grv_cons', 'Consultores', '', 'lvl-group', '', 1);
+grpGrvConsultores.children = [
+  node('tiago_k', 'TIAGO KAUAN MELO\nDOS SANTOS',       'Consultor Técnico', 'lvl-tech'),
+  node('leticia', 'LETICIA ANGELINA\nMOREIRA DA SILVA', 'Consultor Técnico', 'lvl-tech'),
+];
+
+// Mecânicos Gravataí
+const grpGrvMecanicos = node('grp_grv_mec', 'Mecânicos', '', 'lvl-group', '', 1);
+grpGrvMecanicos.children = [
+  node('bruno_o', 'BRUNO OLIVEIRA\nPEREIRA',  'Mecânico A', 'lvl-mec'),
+  node('lucas_s2','LUCAS FREITAS\nSARMENTO', 'Mecânico A', 'lvl-mec'),
+  node('rodrigo', 'RODRIGO FONTANA\nRIBEIRO',  'Mecânico B', 'lvl-mec'),
+];
+
+storeGravatai.children = [grpGrvConsultores, grpGrvMecanicos];
+
+// ── Loja Viamão (Ramo Principal 4) ──
+const storeViamao = node('store_viamao', '🏢 VIAMÃO', 'Filial Viamão', 'lvl-1', '', 3);
+
+// Consultores Viamão
+const grpViaConsultores = node('grp_via_cons', 'Consultores', '', 'lvl-group', '', 1);
+grpViaConsultores.children = [
+  node('marcio_m', 'MARCIO MOREIRA\nDE OLIVEIRA', 'Consultor Técnico', 'lvl-tech'),
+];
+
+// Mecânicos Viamão
+const grpViaMecanicos = node('grp_via_mec', 'Mecânicos', '', 'lvl-group', '', 1);
+grpViaMecanicos.children = [
+  node('demetrio', 'DEMETRIO MEZETTI\nHUMBERT',    'Mecânico B', 'lvl-mec'),
+  node('kelvio',   'KELVIO KISSMANN\nCASAGRANDE', 'Mecânico B', 'lvl-mec'),
+];
+
+// Pós-Vendas Viamão
+const grpViaPosVendas = node('grp_via_pos', 'Pós-Vendas', '', 'lvl-group', '', 1);
+grpViaPosVendas.children = [
+  node('bruno_a', 'BRUNO ARAUJO\nMONTECHIARO', 'Auxiliar de Pós-Vendas', 'lvl-2'),
+];
+
+storeViamao.children = [grpViaConsultores, grpViaMecanicos, grpViaPosVendas];
+
+root.children = [storeMatriz, storeZonaSul, storeGravatai, storeViamao];
+
+// ─── Helper: get rows of children ────────────────────────────────
+function getRows(n) {
+  if (!n.children.length) return [];
+  const cols = Math.min(n.maxCols, n.children.length);
+  const rows = [];
+  for (let i = 0; i < n.children.length; i += cols) {
+    rows.push(n.children.slice(i, i + cols));
+  }
+  return rows;
+}
+
+const STORE_GAP = 180; // Espaçamento amplo entre unidades/lojas
+
+function getGap(n) {
+  return (n === root) ? STORE_GAP : GAP_X;
+}
+
+// ─── Subtree dimensions ───────────────────────────────────────────
+function subtreeWidth(n) {
+  if (!n.children.length) return BW;
+  const rows = getRows(n);
+  let maxRowW = 0;
+  rows.forEach(row => {
+    const gap = getGap(n);
+    const rw = row.reduce((s, c) => s + subtreeWidth(c), 0)
+             + gap * (row.length - 1);
+    if (rw > maxRowW) maxRowW = rw;
+  });
+  return Math.max(BW, maxRowW);
+}
+
+function subtreeHeight(n) {
+  if (!n.children.length) return BH;
+  const rows = getRows(n);
+  let childH = 0;
+  rows.forEach((row, ri) => {
+    const rh = Math.max(...row.map(c => subtreeHeight(c)));
+    childH += rh + (ri < rows.length - 1 ? ROW_GAP : 0);
+  });
+  return BH + GAP_Y + childH;
+}
+
+// ─── Layout ───────────────────────────────────────────────────────
+function layout(n, x, y) {
+  const sw = subtreeWidth(n);
+  n.cx = x + sw / 2;
+  n.cy = y;
+
+  if (!n.children.length) return;
+
+  const rows = getRows(n);
+  let rowY = y + BH + GAP_Y;
+
+  rows.forEach(row => {
+    const gap = getGap(n);
+    const rowW = row.reduce((s, c) => s + subtreeWidth(c), 0)
+               + gap * (row.length - 1);
+    let cx = n.cx - rowW / 2;
+    row.forEach(child => {
+      const csw = subtreeWidth(child);
+      layout(child, cx, rowY);
+      cx += csw + gap;
+    });
+    const maxH = Math.max(...row.map(c => subtreeHeight(c)));
+    rowY += maxH + ROW_GAP;
+  });
+}
+
+layout(root, PAD, PAD + 44);
+
+// ─── Collect all nodes / edges ────────────────────────────────────
+const allBoxes = [];
+const allLines = [];
+
+function collect(n) {
+  allBoxes.push(n);
+  n.children.forEach(c => {
+    allLines.push([n, c]);
+    collect(c);
+  });
+}
+collect(root);
+
+// ─── Render SVG connectors (elbow) ────────────────────────────────
+const svgNS = 'http://www.w3.org/2000/svg';
+
+allLines.forEach(([p, c]) => {
+  const px  = p.cx,     py  = p.cy + BH;
+  const cx  = c.cx,     cy  = c.cy;
+  const mid = py + (cy - py) / 2;
+
+  const path = document.createElementNS(svgNS, 'path');
+  path.setAttribute('d',
+    'M ' + px + ' ' + py
+    + ' L ' + px + ' ' + mid
+    + ' L ' + cx + ' ' + mid
+    + ' L ' + cx + ' ' + cy);
+  path.setAttribute('stroke', '#6c8ebf');
+  path.setAttribute('stroke-width', '1.8');
+  path.setAttribute('fill', 'none');
+  svgEl.appendChild(path);
+});
+
+// ─── Render boxes ─────────────────────────────────────────────────
+allBoxes.forEach(n => {
+  const div = document.createElement('div');
+  div.className = 'box ' + n.cls;
+  div.style.left      = (n.cx - BW / 2) + 'px';
+  div.style.top       = n.cy + 'px';
+  div.style.width     = BW + 'px';
+  div.style.minHeight = BH + 'px';
+
+  const nameEl = document.createElement('div');
+  nameEl.className = 'name';
+  nameEl.textContent = n.name;
+  div.appendChild(nameEl);
+
+  if (n.role) {
+    const roleEl = document.createElement('div');
+    roleEl.className = 'role';
+    roleEl.textContent = n.role;
+    div.appendChild(roleEl);
+  }
+  if (n.obs) {
+    const obsEl = document.createElement('div');
+    obsEl.className = 'obs';
+    obsEl.textContent = n.obs;
+    div.appendChild(obsEl);
+  }
+
+  canvasEl.appendChild(div);
+});
+
+// ─── Size the canvas ──────────────────────────────────────────────
+const maxX = Math.max(...allBoxes.map(n => n.cx + BW / 2)) + PAD;
+const maxY = Math.max(...allBoxes.map(n => n.cy + BH))     + PAD + 80;
+canvasEl.style.width  = maxX + 'px';
+canvasEl.style.height = maxY + 'px';
+svgEl.setAttribute('width',  maxX);
+svgEl.setAttribute('height', maxY);
+svgEl.style.width  = maxX + 'px';
+svgEl.style.height = maxY + 'px';
+</script>
+</body>
+</html>
