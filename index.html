@@ -121,29 +121,61 @@
     .lvl-orc   { background: #e0f2f1; border-color: #26a69a; }
     .lvl-gar   { background: #e1d5e7; border-color: #9673a6; }
 
-    /* Group header boxes */
-    .lvl-group {
-      background: #4a7ab5;
-      border-color: #2d5a8e;
+    /* Store header boxes */
+    .lvl-store {
+      background: #254d75;
+      border-color: #142f4c;
       border-width: 2px;
     }
-    .lvl-group .name {
-      color: #fff;
-      font-size: 11px;
+    .lvl-store .name {
+      color: #ffffff;
+      font-size: 13px;
       font-weight: 700;
-      letter-spacing: 0.5px;
-      text-transform: uppercase;
+    }
+    .lvl-store .role {
+      color: #b9d7ea;
+      font-size: 10.5px;
+      font-weight: 500;
+      margin-top: 1px;
+    }
+    .lvl-store .count-badge {
+      background: #e67e22;
+      color: #ffffff;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 1px 7px;
+      border-radius: 10px;
+      margin-top: 3px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
     }
 
+    .store-summary-tag {
+      background: rgba(255,255,255,0.15);
+      color: #e2f1ff;
+      padding: 3px 10px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 500;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .store-summary-tag strong {
+      color: #ffd166;
+      font-weight: 700;
+    }
   </style>
 </head>
 <body>
 
 <div class="toolbar">
   <span>&#128202; Organograma de Funcionários</span>
-  <button class="toolbar-btn" onclick="zoom(1.15)">＋ Zoom</button>
-  <button class="toolbar-btn" onclick="zoom(0.87)">－ Zoom</button>
-  <button class="toolbar-btn" onclick="resetZoom()">&#8634; Reset</button>
+  <div id="summary-bar" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;"></div>
+  <div style="margin-left: auto; display: flex; gap: 8px;">
+    <button class="toolbar-btn" onclick="zoom(1.15)">＋ Zoom</button>
+    <button class="toolbar-btn" onclick="zoom(0.87)">－ Zoom</button>
+    <button class="toolbar-btn" onclick="resetZoom()">&#8634; Reset</button>
+  </div>
 </div>
 
 <div id="canvas-wrap">
@@ -322,11 +354,11 @@ grpGarantia.children = [
 vinicius.children = [grpConsultores, grpOrcamentista, grpMecanicos, grpEletricistas, grpPintor];
 
 // ── Loja Matriz (Ramo Principal 1) ──
-const storeMatriz = node('store_matriz', '🏢 MATRIZ', 'Unidade Central', 'lvl-1', '', 5);
+const storeMatriz = node('store_matriz', '🏢 MATRIZ', 'Unidade Central', 'lvl-store', '', 5);
 storeMatriz.children = [marlon, vinicius, grpAcessorios, grpAtendimento, grpGarantia];
 
 // ── Loja Zona Sul (Ramo Principal 2) ──
-const storeZonaSul = node('store_zonasul', '🏢 ZONA SUL', 'Filial Zona Sul', 'lvl-1', '', 3);
+const storeZonaSul = node('store_zonasul', '🏢 ZONA SUL', 'Filial Zona Sul', 'lvl-store', '', 3);
 
 // Consultores Zona Sul
 const grpZsConsultores = node('grp_zs_cons', 'Consultores', '', 'lvl-group', '', 1);
@@ -352,7 +384,7 @@ grpZsPosVendas.children = [
 storeZonaSul.children = [grpZsConsultores, grpZsMecanicos, grpZsPosVendas];
 
 // ── Loja Gravataí (Ramo Principal 3) ──
-const storeGravatai = node('store_gravatai', '🏢 GRAVATAÍ', 'Filial Gravataí', 'lvl-1', '', 2);
+const storeGravatai = node('store_gravatai', '🏢 GRAVATAÍ', 'Filial Gravataí', 'lvl-store', '', 2);
 
 // Consultores Gravataí
 const grpGrvConsultores = node('grp_grv_cons', 'Consultores', '', 'lvl-group', '', 1);
@@ -372,7 +404,7 @@ grpGrvMecanicos.children = [
 storeGravatai.children = [grpGrvConsultores, grpGrvMecanicos];
 
 // ── Loja Viamão (Ramo Principal 4) ──
-const storeViamao = node('store_viamao', '🏢 VIAMÃO', 'Filial Viamão', 'lvl-1', '', 3);
+const storeViamao = node('store_viamao', '🏢 VIAMÃO', 'Filial Viamão', 'lvl-store', '', 3);
 
 // Consultores Viamão
 const grpViaConsultores = node('grp_via_cons', 'Consultores', '', 'lvl-group', '', 1);
@@ -396,6 +428,40 @@ grpViaPosVendas.children = [
 storeViamao.children = [grpViaConsultores, grpViaMecanicos, grpViaPosVendas];
 
 root.children = [storeMatriz, storeZonaSul, storeGravatai, storeViamao];
+
+// ─── Contagem de Funcionários por Loja (Excluindo Alberto) ─────────
+function isPerson(n) {
+  if (n.id === 'alberto' || n.id.startsWith('store_') || n.cls === 'lvl-group') {
+    return false;
+  }
+  return true;
+}
+
+function countPeople(n) {
+  let count = isPerson(n) ? 1 : 0;
+  for (const child of n.children) {
+    count += countPeople(child);
+  }
+  return count;
+}
+
+storeMatriz.peopleCount = countPeople(storeMatriz);
+storeZonaSul.peopleCount = countPeople(storeZonaSul);
+storeGravatai.peopleCount = countPeople(storeGravatai);
+storeViamao.peopleCount = countPeople(storeViamao);
+
+const totalPessoas = storeMatriz.peopleCount + storeZonaSul.peopleCount + storeGravatai.peopleCount + storeViamao.peopleCount;
+
+const summaryBar = document.getElementById('summary-bar');
+if (summaryBar) {
+  summaryBar.innerHTML = `
+    <span class="store-summary-tag">Matriz: <strong>${storeMatriz.peopleCount}</strong></span>
+    <span class="store-summary-tag">Zona Sul: <strong>${storeZonaSul.peopleCount}</strong></span>
+    <span class="store-summary-tag">Gravataí: <strong>${storeGravatai.peopleCount}</strong></span>
+    <span class="store-summary-tag">Viamão: <strong>${storeViamao.peopleCount}</strong></span>
+    <span class="store-summary-tag" style="background: rgba(255,255,255,0.25);">Total: <strong>${totalPessoas} pessoas</strong></span>
+  `;
+}
 
 // ─── Helper: get rows of children ────────────────────────────────
 function getRows(n) {
@@ -525,6 +591,12 @@ allBoxes.forEach(n => {
     obsEl.className = 'obs';
     obsEl.textContent = n.obs;
     div.appendChild(obsEl);
+  }
+  if (n.peopleCount !== undefined) {
+    const badgeEl = document.createElement('div');
+    badgeEl.className = 'count-badge';
+    badgeEl.textContent = n.peopleCount + (n.peopleCount === 1 ? ' pessoa' : ' pessoas');
+    div.appendChild(badgeEl);
   }
 
   canvasEl.appendChild(div);
