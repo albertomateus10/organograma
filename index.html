@@ -258,6 +258,7 @@ const grpVendas = node('grp_vendas', 'Vendedores', '', 'lvl-group', '', 1);
 grpVendas.children = [
   node('diego',  'DIEGO ALBERTO\nDE LIMA',     'Vendedor de Peças', 'lvl-2'),
   node('dilson', 'DILSON WESTPHALEN\nPACHECO', 'Vendedor de Peças', 'lvl-2'),
+  node('vaga_vendas', '',                      'Vendedor de Peças', 'lvl-2', 'Vaga Aberta'),
 ];
 
 const grpEstoque = node('grp_estoque', 'Estoque', '', 'lvl-group', '', 1);
@@ -331,6 +332,7 @@ grpAcessorios.children = [
   node('lucas_d', 'LUCAS DORNELES\nSILVEIRA', 'Instalador Líder', 'lvl-2'),
   node('lucas_f', 'LUCAS FERREIRA\nNUNES',    'Aux. de Instalação\nde Acessórios', 'lvl-2'),
   node('renata',  'RENATA DOS\nSANTOS',       'Vendedor de Acessórios', 'lvl-2'),
+  node('vaga_acessorios', '',                 'Auxiliar de Setor', 'lvl-2', 'Vaga Aberta'),
 ];
 
 const grpAtendimento = node('grp_atendimento', 'Atendimento / NPS', '', 'lvl-group', '', 1);
@@ -431,7 +433,7 @@ root.children = [storeMatriz, storeZonaSul, storeGravatai, storeViamao];
 
 // ─── Contagem de Funcionários por Loja (Excluindo Alberto) ─────────
 function isPerson(n) {
-  if (n.id === 'alberto' || n.id.startsWith('store_') || n.cls === 'lvl-group') {
+  if (n.id === 'alberto' || n.id.startsWith('store_') || n.cls === 'lvl-group' || n.id.startsWith('vaga_') || !n.name) {
     return false;
   }
   return true;
